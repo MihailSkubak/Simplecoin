@@ -1,55 +1,135 @@
-import hashlib as hasher
-import datetime as date
+import hashlib
+import json
+from time import time
+from urllib.parse import urlparse
+from uuid import uuid4
+from flask import jsonify, request
+from flask import Flask
 
 
 class Blockchain:
-    def __init__(self, index, time, data, previous_hash):
-        self.index = index
-        self.time = time
-        self.data = data
-        self.previous_hash = previous_hash
-        self.hash = self.hash_block()
+    def __init__(self):
+        self.c_transactions = []
+        self.chain = []
+        self.nodes = set()
+        self.new_block(previous_hash='1', proof=100)
 
-    def hash_block(self):
-        sha = hasher.sha256()
-        sha.update((str(self.index) + str(self.time) + str(self.data) + str(self.previous_hash)).encode())
-        return sha.hexdigest()
+    def registration(self, address):
+        parsed_url = urlparse(address)
+        if parsed_url.netloc:
+            self.nodes.add(parsed_url.netloc)
+        elif parsed_url.path:
+            self.nodes.add(parsed_url.path)
+        else:
+            raise ValueError('Nieprawidlowy URL')
 
+    def new_block(self, proof, previous_hash):
+        block = {
+            'index': len(self.chain) + 1,
+            'time_tamp': time(),
+            'transactions': self.c_transactions,
+            'proof': proof,
+            'previous_hash': previous_hash or self.hash(self.chain[-1]),
+        }
+        self.c_transactions = []
 
-# blok genezy
-def genezy_block():
-    return Blockchain(0, date.datetime.now(), "Genezy Blok", "0")
+        self.chain.append(block)
+        return block
 
+    def proof_of_work(self, last_block):
+        """
+        Simple Proof of Work Algorithm:
+         - Find a number p' such that hash(pp') contains leading 4 zeroes
+         - Where p is the previous proof, and p' is the new proof
 
-# wszystkie późniejsze bloki w łańcuchu bloków
-def next_block(last_block):
-    this_index = last_block.index + 1
-    this_time = date.datetime.now()
-    this_data = str(this_index)
-    this_hash = last_block.hash
-    return Blockchain(this_index, this_time, this_data, this_hash)
+        :param last_block: <dict> last Block
+        :return: <int>
+        """
 
+        last_proof = last_block['proof']
+        last_hash = self.hash(last_block)
 
-# łańcuch bloków i blok genezy
-blockchain = [genezy_block()]
-previous_block = blockchain[0]
+        proof = 0
+        while self.valid_proof(last_proof, proof, last_hash) is False:
+            proof += 1
 
-# ile bloków
-num_of_blocks = 20
+        return proof
 
-# dodanie bloku
-for i in range(0, num_of_blocks):
-    block_to_add = next_block(previous_block)
-    blockchain.append(block_to_add)
-    previous_block = block_to_add
-    print("Blok {}: został dodany do łańcucha bloków!".format(block_to_add.index))
-    print(f"Hash: {block_to_add.hash}\n")
+    @staticmethod
+    def valid_proof(last_proof, proof, last_hash):
+        """
+        Validates the Proof
+        :param last_proof: <int> Previous Proof
+        :param proof: <int> Current Proof
+        :param last_hash: <str> The hash of the Previous Block
+        :return: <bool> True if correct, False if not.
+        """
 
-# Press the green button in the gutter to run the script.
-# def print_hi(name):
-# Use a breakpoint in the code line below to debug your script.
-# print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
-# if __name__ == '__main__':
-# print_hi('PyCharm')
+        guess = f'{last_proof}{proof}{last_hash}'.encode()
+        guess_hash = hashlib.sha256(guess).hexdigest()
+        return guess_hash[:4] == "0000"
 
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+    def transaction_creare(self, nadawca, odbiorca, ile):
+        self.c_transactions.append({
+            'nadawca': nadawca,
+            'odbiorca': odbiorca,
+            'ilosc': ile,
+        })
+
+        return self.last_block['index'] + 1
+
+    @property
+    def last_block(self):
+        return self.chain[-1]
+
+    @staticmethod
+    def hash(block):
+        block_string = json.dumps(block, sort_keys=True).encode()
+        return hashlib.sha256(block_string).hexdigest()
+
+app = Flask(__name__)
+node_identifier = str(uuid4()).replace('-', '')
+blockchain = Blockchain()
+
+@app.route('/transactions', methods=['POST'])
+def transaction():
+    values = request.get_json()
+    required = ['nadawca', 'odbiorca', 'ilosc']
+    if not all(k in values for k in required):
+        return 'Brakujace wartosci', 400
+
+    index = blockchain.transaction_creare(values['nadawca'], values['odbiorca'], values['ilosc'])
+    response = {'Wiadomosc': f'Transakcja dodana do bloku {index}'}
+    return jsonify(response), 201
+
+@app.route('/chain', methods=['GET'])
+def full_chain():
+    response = {
+        'chain': blockchain.chain,
+        'length': len(blockchain.chain),
+    }
+    return jsonify(response), 200
+
+@app.route('/mine', methods=['GET'])
+def mine():
+
+    last_block = blockchain.last_block
+    proof = blockchain.proof_of_work(last_block)
+
+    blockchain.transaction_creare(
+        nadawca="0",
+        odbiorca=node_identifier,
+        ile=1,
+    )
+
+    previous_hash = blockchain.hash(last_block)
+    block = blockchain.new_block(proof, previous_hash)
+
+    response = {
+        'message': "New Block Forged",
+        'index': block['index'],
+        'transactions': block['transactions'],
+        'proof': block['proof'],
+        'previous_hash': block['previous_hash'],
+    }
+    return jsonify(response), 200
