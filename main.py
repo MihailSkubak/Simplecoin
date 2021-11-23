@@ -76,17 +76,6 @@ app = Flask(__name__)
 node_identifier = str(uuid4()).replace('-', '')
 blockchain = Blockchain()
 
-@app.route('/transactions', methods=['POST'])
-def transaction():
-    values = request.get_json()
-    required = ['nadawca', 'odbiorca', 'ilosc']
-    if not all(k in values for k in required):
-        return 'Brakujace wartosci', 400
-
-    index = blockchain.transaction_creare(values['nadawca'], values['odbiorca'], values['ilosc'])
-    response = {'Wiadomosc': f'Transakcja dodana do bloku {index}'}
-    return jsonify(response), 201
-
 @app.route('/chain', methods=['GET'])
 def full_chain():
     response = {
@@ -118,3 +107,14 @@ def mine():
         'previous_hash': block['previous_hash'],
     }
     return jsonify(response), 200
+
+@app.route('/transactions', methods=['POST'])
+def transaction():
+    values = request.get_json()
+    required = ['nadawca', 'odbiorca', 'ilosc']
+    if not all(k in values for k in required):
+        return 'Brakujace wartosci', 400
+
+    index = blockchain.transaction_creare(values['nadawca'], values['odbiorca'], values['ilosc'])
+    response = {'Wiadomosc': f'Transakcja dodana do bloku {index}'}
+    return jsonify(response), 201
