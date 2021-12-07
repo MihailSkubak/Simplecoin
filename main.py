@@ -72,6 +72,45 @@ class Blockchain:
         block_string = json.dumps(block, sort_keys=True).encode()
         return hashlib.sha256(block_string).hexdigest()
 
+    def valid_chain(self, chain):
+        last_block = chain[0]
+        current_index = 1
+
+        while current_index < len(chain):
+            block = chain[current_index]
+            print(f'{last_block}')
+            print(f'{block}')
+            print("\n-----------\n")
+            last_block_hash = self.hash(last_block)
+            if block['previous_hash'] != last_block_hash:
+                return False
+            if not self.valid_proof(last_block['proof'], block['proof'], last_block_hash):
+                return False
+
+            last_block = block
+            current_index += 1
+
+        return True
+
+    def check_true_block(self):
+        neighbours = self.nodes
+        new_chain = None
+        max_length = len(self.chain)
+        for node in neighbours:
+            response = requests.get(f'http://{node}/chain')
+
+            if response.status_code == 200:
+                length = response.json()['length']
+                chain = response.json()['chain']
+                if length > max_length and self.valid_chain(chain):
+                    max_length = length
+                    new_chain = chain
+        if new_chain:
+            self.chain = new_chain
+            return True
+
+        return False
+
 app = Flask(__name__)
 node_identifier = str(uuid4()).replace('-', '')
 blockchain = Blockchain()
@@ -118,3 +157,21 @@ def transaction():
     index = blockchain.transaction_creare(values['nadawca'], values['odbiorca'], values['ilosc'])
     response = {'Wiadomosc': f'Transakcja dodana do bloku {index}'}
     return jsonify(response), 201
+
+
+@app.route('/nodes/resolve', methods=['GET'])
+def consensus():
+    replaced = blockchain.check_true_block()
+
+    if replaced:
+        response = {
+            'message': 'Nasz łańcuch został wymieniony',
+            'new_chain': blockchain.chain
+        }
+    else:
+        response = {
+            'message': 'Nasz łańcuch jest autorytatywny',
+            'chain': blockchain.chain
+        }
+
+    return jsonify(response), 200
