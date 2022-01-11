@@ -111,6 +111,12 @@ class Blockchain:
 
         return False
 
+    @staticmethod
+    def valid_proof(last_proof, proof, last_hash):
+        guess = f'{last_proof}{proof}{last_hash}'.encode()
+        guess_hash = hashlib.sha256(guess).hexdigest()
+        return guess_hash[:4] == "0000"
+
 app = Flask(__name__)
 node_identifier = str(uuid4()).replace('-', '')
 blockchain = Blockchain()
@@ -175,3 +181,20 @@ def consensus():
         }
 
     return jsonify(response), 200
+
+@app.route('/nodes/register', methods=['POST'])
+def registrations():
+    values = request.get_json()
+
+    nodes = values.get('nodes')
+    if nodes is None:
+        return "Błąd: podaj prawidłową listę węzłów", 400
+
+    for node in nodes:
+        blockchain.registration(node)
+
+    response = {
+        'wiadomość': 'Dodano nowe węzły',
+        'całkowita_liczba_węzłów': list(blockchain.nodes),
+    }
+    return jsonify(response), 201
