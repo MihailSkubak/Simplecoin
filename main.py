@@ -5,7 +5,8 @@ from urllib.parse import urlparse
 from uuid import uuid4
 from flask import jsonify, request
 from flask import Flask
-
+import Crypto.PublicKey.RSA
+import Crypto.Cipher.AES
 
 class Blockchain:
     def __init__(self):
@@ -120,6 +121,18 @@ class Blockchain:
 app = Flask(__name__)
 node_identifier = str(uuid4()).replace('-', '')
 blockchain = Blockchain()
+
+@app.route('/wallet/new', methods=['GET'])
+def new_wallet():
+    random_gen = Crypto.Random.new().read
+    private_key = RSA.generate(1024, random_gen)
+    public_key = private_key.publickey()
+    response = {
+        'private_key': biniscii.hexlify(private_key.exportKey(format='DER')).decode('ascii'),
+        'public_key': biniscii.hexlify(public_key.exportKey(format='DER')).decode('ascii')
+    }
+
+    return jsonify(response), 200
 
 @app.route('/chain', methods=['GET'])
 def full_chain():
